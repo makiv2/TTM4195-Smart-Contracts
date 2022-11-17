@@ -118,6 +118,10 @@ contract CarLeaseSystem {
         l.quote = car.calculatePrice(original_value, current_car_mileage, driver_experience, mileage_cap, end_time-start_time);
     }
 
+    function calculatePrice(uint256 original_value, uint256 current_car_mileage, uint256 driver_experience, uint256 mileage_cap, uint256 contract_duration) public view returns (uint256){
+        return car.calculatePrice(original_value, current_car_mileage, driver_experience, mileage_cap, contract_duration);
+    }
+
 }
 
 contract Car is ERC721URIStorage{
