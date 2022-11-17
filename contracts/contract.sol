@@ -12,6 +12,7 @@ contract CarLeaseSystem {
         address payable buyer;
         uint256 quote;
         uint256 payments;
+        uint256 down_payment;
     }
     
     enum State { Available, Locked, Leased }
@@ -21,32 +22,37 @@ contract CarLeaseSystem {
     mapping(uint256 => Lease) private cars;
     Car private car = new Car();
 
-    constructor( string[] memory _carURIs ) public {
+    constructor( string[] memory _carURIs ) {
         seller = payable(msg.sender);
         for (uint256 i=0; i<_carURIs.length; i++){
-            cars[car.mintCAR(_carURIs[i])] = Lease(State.Available, 0,0, payable(msg.sender),0,0); // Only first argument matters
+            cars[car.mintCAR(_carURIs[i])] = Lease(State.Available, 0,0, payable(msg.sender),0,0,0); // Only first argument matters
         }
     }
 
     modifier onlySeller() {
         require(msg.sender == seller, "Only seller can call this");_;}
-/*
-    modifier onlyBuyer() {
-        require(msg.sender == buyer, "Only buyer can call this");_;}
-*/
 
+    modifier onlyBuyer(uint256 carTokenID) {
+        require(msg.sender == cars[carTokenID].buyer, "Only buyer can call this");_;}
 
     modifier inState(uint256 carTokenID, State _state){
         require( cars[carTokenID].state == _state, "Invalid state");_;}
+
+    modifier endOfContractPeriod(uint256 carTokenID){
+        Lease storage l = cars[carTokenID];
+        uint256 seconds_in_a_month = 2629800; 
+        require( block.timestamp > l.end_time - seconds_in_a_month && 
+        block.timestamp <= l.end_time , "Not in the end of contract period");_;
+    }
 
 
     event PurchaseConfirmed();
     event SignedBySeller();
     event NotSignedBySeller();
 
-    function confirmPurchase(uint256 carTokenID, uint256 current_car_mileage, uint256 driver_experience, uint256 mileage_cap, uint256 start_time, uint256 end_time
+    function confirmPurchase(uint256 carTokenID, uint256 original_value, uint256 current_car_mileage, uint256 driver_experience, uint256 mileage_cap, uint256 start_time, uint256 end_time
         /* car token, duration, mileage, driver's experience */) public payable inState(carTokenID, State.Available){
-        uint256 price = car.calculatePrice(current_car_mileage, driver_experience, mileage_cap, end_time-start_time);
+        uint256 price = car.calculatePrice(original_value, current_car_mileage, driver_experience, mileage_cap, end_time-start_time);
         require(msg.value==price*4, "Incorrect value sent.");
 
         emit PurchaseConfirmed();
@@ -57,6 +63,7 @@ contract CarLeaseSystem {
         cars[carTokenID].end_time = end_time;
         value = msg.value; // Locking value in contract
         cars[carTokenID].state=State.Locked;
+        cars[carTokenID].down_payment = 3 * price;
     }
 
     function sellerSign(uint256 carTokenID) public onlySeller() inState(carTokenID, State.Locked){
@@ -94,6 +101,23 @@ contract CarLeaseSystem {
         cars[carTokenID].payments = cars[carTokenID].payments + 1;
     }
 
+    function terminateContract(uint256 carTokenID) public onlyBuyer(carTokenID) inState(carTokenID, State.Leased) endOfContractPeriod(carTokenID){
+        Lease storage l = cars[carTokenID];
+        l.buyer.transfer(l.down_payment);
+        deleteLease(carTokenID);
+        car.transferOwnership(carTokenID, cars[carTokenID]);
+    }
+
+    function extendLease(uint256 carTokenID,uint256 original_value, uint256 current_car_mileage, uint256 driver_experience, uint256 mileage_cap, uint256 start_time, uint256 end_time)
+    public onlyBuyer(carTokenID) 
+    inState(carTokenID, State.Leased) 
+    endOfContractPeriod(carTokenID) {
+        Lease storage l = cars[carTokenID];       
+        l.buyer.transfer(l.down_payment);
+        l.end_time = l.end_time + 31557600; // one year in seconds
+        l.quote = car.calculatePrice(original_value, current_car_mileage, driver_experience, mileage_cap, end_time-start_time);
+    }
+
 }
 
 contract Car is ERC721URIStorage{
@@ -107,8 +131,8 @@ contract Car is ERC721URIStorage{
         minter_address = msg.sender;
     }
 
-    function calculatePrice(uint256 current_car_mileage, uint256 driver_experience, uint256 mileage_cap, uint256 end_time) public returns (uint256){
-        return 100;
+    function calculatePrice(uint256 original_value, uint256 current_car_mileage, uint256 driver_experience, uint256 mileage_cap, uint256 contract_duration) public pure returns (uint256){
+        return original_value - current_car_mileage/20 - driver_experience*5 + mileage_cap/20 - contract_duration/1000000;
     }
 
     modifier onlyMinter() {
