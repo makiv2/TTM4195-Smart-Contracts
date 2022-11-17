@@ -24,33 +24,32 @@ contract CarLeaseSystem {
         require(msg.sender == seller, "Only seller can call this");_;}
     modifier onlyBuyer() {
         require(msg.sender == buyer, "Only buyer can call this");_;}
-    modifier inState(State _state){
-        require( state == _state, "Invalid state");_;}
+    modifier inState(uint256 carTokenID, State _state){
+        require( cars[carTokenID].state == _state, "Invalid state");_;}
 
 
     event PurchaseConfirmed();
     event SignedBySeller();
 
-    function confirmPurchase(/* car token, duration, mileage, driver's experience */) public payable inState(State.Created){
+    function confirmPurchase(uint256 carTokenID, uint256 driver_experience
+        /* car token, duration, mileage, driver's experience */) public payable inState(carTokenID, State.Created){
         // if car not available for leasing, or if msg.value!=quote RAISE ERROR
         // unfinishedLease = Lease(these arguments)
 
         emit PurchaseConfirmed();
         buyer = payable(msg.sender);
         value = msg.value; // Locking value in contract
-        state=State.Locked;
+        cars[carTokenID].state=State.Locked;
     }
 
-    function sellerSign() public onlySeller() inState(State.Locked){
+    function sellerSign(uint256 carTokenID) public onlySeller() inState(carTokenID, State.Locked){
         
         emit SignedBySeller();
         
-        state = State.Inactive;
+        cars[carTokenID].state = State.Inactive;
         seller.transfer(value);
         // carNFT._transfer( ownerOf(carToken?) , msg.sender, carToken );
     }
-
-
 
 }
 
@@ -61,6 +60,8 @@ contract Car is ERC721{
     constructor(uint256 _original_price) ERC721("Car","CAR"){
         minter_address = msg.sender;
     }
+
+
 
     //function mintCar()
 }
